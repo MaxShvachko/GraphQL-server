@@ -1,0 +1,10 @@
+dist
+node_modules
+.vscode
+
+*.tsbuildinfo
+
+yarn-error.log*
+
+# production
+/build
