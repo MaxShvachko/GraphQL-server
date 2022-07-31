@@ -138,7 +138,6 @@ export class UserResolver {
   ): Promise<{}> {    
     return new Promise((resolve) => req.session.destroy((error: unknown) => {
       if (error) {
-        console.log(error);
         resolve(false);
         return
       } else {
