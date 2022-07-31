@@ -7,20 +7,13 @@ import { buildSchema } from 'type-graphql';
 import redis from "redis";
 import session from "express-session";
 import connectRedis from 'connect-redis';
+import cors from 'cors';
 
 import { __prod__  } from "./constants/common";
 import mikroOrmConfig from "./mikro-orm.config";
 import { PostResolver } from "./resolvers/post";
 import { UserResolver } from './resolvers/user';
-import { COOKIE_MAX_AGE } from './constants/cookies';
-
-const corsOptions = {
-  origin: [
-    "https://studio.apollographql.com",
-    "http://localhost:4000/graphql",
-  ],
-  credentials: true
-}
+import { COOKIE_MAX_AGE, COOKIE_NAME } from './constants/cookies';
 
 const init = async() => {
   const orm = await MikroORM.init(mikroOrmConfig);
@@ -33,9 +26,14 @@ const init = async() => {
     url: `redis://${process.env.REDIS_USER}:${process.env.REDIS_PASSWORD}@0.0.0.0:6379`,
   });
 
+  app.use(cors({
+    origin: ['https://studio.apollographql.com', 'http://localhost:3000'],
+    credentials: true
+  }))
+
   app.use(
     session({
-      name: 'qid',
+      name: COOKIE_NAME,
       store: new RedisStore({
         client: redisClient,
         disableTouch: true
@@ -44,7 +42,7 @@ const init = async() => {
         maxAge: COOKIE_MAX_AGE,
         httpOnly: true,
         secure: __prod__,
-        sameSite: 'none',
+        sameSite: 'lax',
       },
       saveUninitialized: false,
       secret: process.env.REDIS_SECRET as string,
@@ -61,7 +59,7 @@ const init = async() => {
   });
 
   await apolloServer.start();
-  apolloServer.applyMiddleware({ app, cors: corsOptions });
+  apolloServer.applyMiddleware({ app, cors: false });
 
   app.listen(process.env.PORT, () => {
     console.log(`Server started on the ${process.env.PORT} port`);
