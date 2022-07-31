@@ -3,6 +3,7 @@ import argon2 from 'argon2';
 
 import { ApolloContext } from "../types";
 import { User } from "../entities/User";
+import { COOKIE_NAME } from "../constants/cookies";
 
 @InputType()
 class RegisterParams {
@@ -129,5 +130,21 @@ export class UserResolver {
     @Ctx() { em }: ApolloContext
   ): Promise<User[]> {
     return em.find(User, {});
+  }
+
+  @Mutation(() => Boolean)
+  logout(
+    @Ctx() { req, res }: ApolloContext
+  ): Promise<{}> {    
+    return new Promise((resolve) => req.session.destroy((error: unknown) => {
+      if (error) {
+        console.log(error);
+        resolve(false);
+        return
+      } else {
+        res.clearCookie(COOKIE_NAME);
+        resolve(true);
+      }
+    }))
   }
 }
