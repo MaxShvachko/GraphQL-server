@@ -4,6 +4,10 @@ import argon2 from 'argon2';
 import { ApolloContext } from "../types";
 import { User } from "../entities/User";
 import { COOKIE_NAME } from "../constants/cookies";
+import sendEmail from "../utils/sendEmail";
+import { FORGOT_PASSWORD_PREFIX, FRONT_HOST, THREE_DAYS } from "../constants/common";
+import { v4 as uuid } from 'uuid';
+import { FRONT_ROUTES } from "../constants/frontRoutes";
 
 @InputType()
 class RegisterParams {
@@ -11,7 +15,31 @@ class RegisterParams {
   nick_name: string
 
   @Field()
+  email: string
+
+  @Field()
   password: string
+}
+
+@InputType()
+class LogInParams {
+  @Field()
+  email: string
+
+  @Field()
+  password: string
+}
+
+@InputType()
+class ChangePasswordParams {
+  @Field()
+  new_password: string;
+
+  @Field()
+  confirm_new_password: string;
+
+  @Field()
+  token: string;
 }
 
 @ObjectType()
@@ -26,10 +54,10 @@ class FieldError {
 @ObjectType()
 class UserResponse {
   @Field(() => [FieldError], { nullable: true })
-  errors?: FieldError[]
+  errors?: FieldError[];
 
   @Field(() => User, { nullable: true })
-  user?: User
+  user?: User;
 }
 
 @Resolver()
@@ -66,25 +94,38 @@ export class UserResolver {
 
   @Mutation(() => UserResponse)
   async register(
-    @Arg('options') options: RegisterParams,
+    @Arg('options') { email, nick_name, password }: RegisterParams,
     @Ctx() { em, req }: ApolloContext
   ): Promise<UserResponse> {
-    const existedUser = await em.findOne(User, { nick_name: options.nick_name });
+    const existedEmail = await em.findOne(User, { email });
 
-    if (existedUser) {
+    if (existedEmail) {
       return {
         errors: [{
-          field: 'nick_name',
-          message: `User with nick name \'${options.nick_name}\' already exists`
+          field: 'email',
+          message: `User with email \'${email}\' already exists`
         }]
       };
     }
 
-    const password = await argon2.hash(options.password);
+    const existedNickName = await em.findOne(User, { nick_name });
 
-    const user = em.create(User, { nick_name: options.nick_name, password });
+    if (existedNickName) {
+      return {
+        errors: [{
+          field: 'nick_name',
+          message: `User with nick name \'${nick_name}\' already exists`
+        }]
+      };
+    }
+
+    const hashedPassword = await argon2.hash(password);
+
+    const user = em.create(User, { nick_name, password: hashedPassword, email });
     await em.persistAndFlush(user);
     
+    await sendEmail(email, 'Thanks for registration ))');
+
     req.session.uid = user.id
 
     return { user }; 
@@ -92,22 +133,22 @@ export class UserResolver {
 
   @Mutation(() => UserResponse)
   async login(
-    @Arg('options') options: RegisterParams,
+    @Arg('options') { email, password }: LogInParams,
     @Ctx() { em, req }: ApolloContext
   ): Promise<UserResponse> {
-    const user = await em.findOne(User, { nick_name: options.nick_name });
+    const user = await em.findOne(User, { email });
 
     if (!user) {
       delete req.session.uid
       return {
         errors: [{
-          field: 'nick_name',
-          message: `User with nick name '${options.nick_name}' doesn't exist`
+          field: 'email',
+          message: `User with email '${email}' doesn't exist`
         }]
       };
     }
 
-    const isEqualPassword = await argon2.verify(user.password, options.password);
+    const isEqualPassword = await argon2.verify(user.password, password);
 
     if (!isEqualPassword) {
       delete req.session.uid
@@ -135,7 +176,7 @@ export class UserResolver {
   @Mutation(() => Boolean)
   logout(
     @Ctx() { req, res }: ApolloContext
-  ): Promise<{}> {    
+  ): Promise<{}> {
     return new Promise((resolve) => req.session.destroy((error: unknown) => {
       if (error) {
         resolve(false);
@@ -145,5 +186,87 @@ export class UserResolver {
         resolve(true);
       }
     }))
+  }
+
+  @Mutation(() => Boolean)
+  async forgotPassword(
+    @Arg('email') email: string,
+    @Ctx() { em, redis }: ApolloContext
+  ) {
+    const user = await em.findOne(User, { email });
+
+    if (!user) {
+      return true;
+    }
+
+    const token = uuid();
+
+    await redis.set(FORGOT_PASSWORD_PREFIX + token, user.id, 'EX', THREE_DAYS);
+
+    await sendEmail(email, `<a href=${FRONT_HOST}${`${FRONT_ROUTES.RECOVERY_PASSWORD}?token=${token}`} target="_blank">Reset Password</a>`);
+
+    return false;
+  }
+
+  @Mutation(() => UserResponse)
+  async changePassword(
+    @Arg('options') { token, confirm_new_password, new_password }: ChangePasswordParams,
+    @Ctx() { redis, em, req }: ApolloContext
+  ) {
+    const isNotEqualPasswords = new_password !== confirm_new_password;
+
+    if (isNotEqualPasswords) {
+      return {
+        errors: [{
+          field: 'confirm_new_password',
+          message: 'Please set equal new password and confirm new password'
+        }]
+      }
+    }
+
+    if (!token) {
+      return {
+        errors: [{
+          field: 'token',
+          message: 'Please pass the token'
+        }]
+      }
+    }
+
+    const tokenKey = FORGOT_PASSWORD_PREFIX + token;
+
+    const userId = await redis.get(tokenKey);
+
+    if (!userId) {
+      return {
+        errors: [{
+          field: 'token',
+          message: 'The token is expired'
+        }]
+      }
+    }
+
+    redis.del(tokenKey);
+
+    const user = await em.findOne(User, { id: Number(userId) });
+
+    if (!user) {
+      return {
+        errors: [{
+          field: 'email',
+          message: 'User doesn\'t exist'
+        }]
+      }
+    }
+
+    const hashedPassword = await argon2.hash(new_password);
+
+    await em.nativeUpdate(User, { id: Number(userId) }, { password: hashedPassword });
+
+    req.session.uid = userId;
+
+    return {
+      user
+    }
   }
 }
