@@ -1,6 +1,5 @@
 require('dotenv').config();
 import 'reflect-metadata';
-import { MikroORM } from "@mikro-orm/core";
 import express from 'express';
 import { ApolloServer } from 'apollo-server-express';
 import { buildSchema } from 'type-graphql';
@@ -8,16 +7,19 @@ import Redis from "ioredis";
 import session from "express-session";
 import connectRedis from 'connect-redis';
 import cors from 'cors';
+import { DataSource } from 'typeorm';
 
 import { __prod__  } from "./constants/common";
-import mikroOrmConfig from "./mikro-orm.config";
+import typeOrmConfig from "./type-orm-config";
 import { PostResolver } from "./resolvers/post";
 import { UserResolver } from './resolvers/user';
 import { COOKIE_MAX_AGE, COOKIE_NAME } from './constants/cookies';
 
 const init = async() => {
-  const orm = await MikroORM.init(mikroOrmConfig);
-  await orm.getMigrator().up();
+  const AppDataSource = new DataSource(typeOrmConfig);
+  // await AppDataSource.dropDatabase();
+  await AppDataSource.initialize(); 
+
   const app = express();
 
   const RedisStore = connectRedis(session)
@@ -53,7 +55,7 @@ const init = async() => {
       resolvers: [PostResolver, UserResolver],
       validate: false
     }),
-    context: ({ req, res }) => ({ em: orm.em, req, res, redis })
+    context: ({ req, res }) => ({ dataSource: AppDataSource, req, res, redis })
   });
 
   await apolloServer.start();
