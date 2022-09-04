@@ -8,6 +8,7 @@ import sendEmail from "../utils/sendEmail";
 import { FORGOT_PASSWORD_PREFIX, FRONT_HOST, THREE_DAYS } from "../constants/common";
 import { v4 as uuid } from 'uuid';
 import { FRONT_ROUTES } from "../constants/frontRoutes";
+import { FieldError } from "../baseObjectType";
 
 @InputType()
 class RegisterParams {
@@ -43,15 +44,6 @@ class ChangePasswordParams {
 }
 
 @ObjectType()
-class FieldError {
-  @Field()
-  field: string
-
-  @Field()
-  message: string
-}
-
-@ObjectType()
 class UserResponse {
   @Field(() => [FieldError], { nullable: true })
   errors?: FieldError[];
@@ -63,22 +55,20 @@ class UserResponse {
 @Resolver()
 export class UserResolver {
   @Query(() => UserResponse)
-  async me(
-    @Ctx() { req, em }: ApolloContext
-  ): Promise<UserResponse> {
+  async me(@Ctx() { req }: ApolloContext): Promise<UserResponse> {
     const { uid } = req.session;
 
     if (!uid) {
       return {
         errors: [{
           field: 'user',
-          message: `You are unauthorized`
+          message: `You are not authenticated`
         }]
       };
     }
 
 
-    const user = await em.findOne(User, { id: uid });
+    const user = await User.findOneBy({ id: uid });
 
     if (!user) {
       return {
@@ -95,9 +85,9 @@ export class UserResolver {
   @Mutation(() => UserResponse)
   async register(
     @Arg('options') { email, nick_name, password }: RegisterParams,
-    @Ctx() { em, req }: ApolloContext
+    @Ctx() { req }: ApolloContext
   ): Promise<UserResponse> {
-    const existedEmail = await em.findOne(User, { email });
+    const existedEmail = await User.findOneBy({ email });
 
     if (existedEmail) {
       return {
@@ -108,7 +98,7 @@ export class UserResolver {
       };
     }
 
-    const existedNickName = await em.findOne(User, { nick_name });
+    const existedNickName = await User.findOneBy({ nick_name });
 
     if (existedNickName) {
       return {
@@ -121,9 +111,8 @@ export class UserResolver {
 
     const hashedPassword = await argon2.hash(password);
 
-    const user = em.create(User, { nick_name, password: hashedPassword, email });
-    await em.persistAndFlush(user);
-    
+    const user = await User.create({ nick_name, password: hashedPassword, email }).save();
+    console.log(user, 'user')
     await sendEmail(email, 'Thanks for registration ))');
 
     req.session.uid = user.id
@@ -134,9 +123,9 @@ export class UserResolver {
   @Mutation(() => UserResponse)
   async login(
     @Arg('options') { email, password }: LogInParams,
-    @Ctx() { em, req }: ApolloContext
+    @Ctx() { req }: ApolloContext
   ): Promise<UserResponse> {
-    const user = await em.findOne(User, { email });
+    const user = await User.findOneBy({ email });
 
     if (!user) {
       delete req.session.uid
@@ -167,10 +156,8 @@ export class UserResolver {
   }
 
   @Query(() => [User])
-  users(
-    @Ctx() { em }: ApolloContext
-  ): Promise<User[]> {
-    return em.find(User, {});
+  users(): Promise<User[]> {
+    return User.find();
   }
 
   @Mutation(() => Boolean)
@@ -191,9 +178,9 @@ export class UserResolver {
   @Mutation(() => Boolean)
   async forgotPassword(
     @Arg('email') email: string,
-    @Ctx() { em, redis }: ApolloContext
+    @Ctx() { redis }: ApolloContext
   ) {
-    const user = await em.findOne(User, { email });
+    const user = await User.findOneBy({ email });
 
     if (!user) {
       return true;
@@ -211,7 +198,7 @@ export class UserResolver {
   @Mutation(() => UserResponse)
   async changePassword(
     @Arg('options') { token, confirm_new_password, new_password }: ChangePasswordParams,
-    @Ctx() { redis, em, req }: ApolloContext
+    @Ctx() { redis, req }: ApolloContext
   ) {
     const isNotEqualPasswords = new_password !== confirm_new_password;
 
@@ -248,7 +235,7 @@ export class UserResolver {
 
     redis.del(tokenKey);
 
-    const user = await em.findOne(User, { id: Number(userId) });
+    const user = await User.findOneBy({ id: Number(userId) });
 
     if (!user) {
       return {
@@ -261,7 +248,7 @@ export class UserResolver {
 
     const hashedPassword = await argon2.hash(new_password);
 
-    await em.nativeUpdate(User, { id: Number(userId) }, { password: hashedPassword });
+    await User.update({ id: Number(userId) }, { password: hashedPassword });
 
     req.session.uid = userId;
 

@@ -1,9 +1,9 @@
-import { Connection, EntityManager, IDatabaseDriver } from "@mikro-orm/core";
 import { Request, Response } from 'express';
 import { Redis } from "ioredis";
+import { DataSource } from "typeorm";
 
 export interface ApolloContext {
-  em: EntityManager<IDatabaseDriver<Connection>>;
+  dataSource: DataSource;
   req: Request & { session: any };
   res: Response;
   redis: Redis
