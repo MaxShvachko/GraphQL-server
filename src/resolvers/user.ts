@@ -8,6 +8,7 @@ import sendEmail from "../utils/sendEmail";
 import { FORGOT_PASSWORD_PREFIX, FRONT_HOST, THREE_DAYS } from "../constants/common";
 import { v4 as uuid } from 'uuid';
 import { FRONT_ROUTES } from "../constants/frontRoutes";
+import { FieldError } from "../baseObjectType";
 
 @InputType()
 class RegisterParams {
@@ -43,15 +44,6 @@ class ChangePasswordParams {
 }
 
 @ObjectType()
-class FieldError {
-  @Field()
-  field: string
-
-  @Field()
-  message: string
-}
-
-@ObjectType()
 class UserResponse {
   @Field(() => [FieldError], { nullable: true })
   errors?: FieldError[];
@@ -70,7 +62,7 @@ export class UserResolver {
       return {
         errors: [{
           field: 'user',
-          message: `You are unauthorized`
+          message: `You are not authenticated`
         }]
       };
     }
@@ -119,8 +111,8 @@ export class UserResolver {
 
     const hashedPassword = await argon2.hash(password);
 
-    const user = User.create({ nick_name, password: hashedPassword, email });
-    
+    const user = await User.create({ nick_name, password: hashedPassword, email }).save();
+    console.log(user, 'user')
     await sendEmail(email, 'Thanks for registration ))');
 
     req.session.uid = user.id

@@ -17,19 +17,18 @@ import { COOKIE_MAX_AGE, COOKIE_NAME } from './constants/cookies';
 
 const init = async() => {
   const AppDataSource = new DataSource(typeOrmConfig);
-  // await AppDataSource.dropDatabase();
   await AppDataSource.initialize(); 
 
   const app = express();
 
-  const RedisStore = connectRedis(session)
+  const RedisStore = connectRedis(session);
   
   const redis = new Redis(`redis://${process.env.REDIS_USER}:${process.env.REDIS_PASSWORD}@0.0.0.0:6379`);
 
   app.use(cors({
     origin: ['https://studio.apollographql.com', 'http://localhost:3000'],
     credentials: true
-  }))
+  }));
 
   app.use(
     session({
