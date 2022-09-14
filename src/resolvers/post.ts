@@ -1,5 +1,5 @@
 import { Post } from "../entities/Post";
-import { Arg, Mutation, Query, Resolver, InputType, Field, Ctx, UseMiddleware } from "type-graphql";
+import { Arg, Mutation, Query, Resolver, InputType, Field, Ctx, UseMiddleware, Int, FieldResolver, Root, ObjectType } from "type-graphql";
 import { ApolloContext } from "../types";
 import { isAuth } from "../middleware/isAuth";
 
@@ -12,11 +12,48 @@ class PostParams {
   text: string;
 }
 
-@Resolver()
+@ObjectType()
+class PaginatedPost {
+  @Field(() => [Post])
+  data: Post[];
+
+  @Field()
+  hasMore: boolean;
+  
+}
+
+@Resolver(Post)
 export class PostResolver {
-  @Query(() => [Post])
-  posts(): Promise<Post[]> {
-    return Post.find();
+  @FieldResolver(() => String) 
+  textSnippet(
+    @Root() root: Post
+  ) {
+    return root.text.slice(0, 70);
+  }
+  
+  @Query(() => PaginatedPost)
+  async posts(
+    @Arg('limit', () => Int) limit: number,
+    @Arg('cursor', () => String, { nullable: true }) cursor: string | null,
+    @Ctx() { dataSource }: ApolloContext
+  ): Promise<PaginatedPost | null> {
+    const realLimit = Math.min(50, limit);
+    const realLimitForHasMore = realLimit + 1;
+
+    const qb = dataSource
+    .getRepository(Post)
+    .createQueryBuilder("p")
+    .orderBy('"createdAt"', 'DESC')
+    .take(realLimitForHasMore)
+
+    if (cursor) {
+      qb.where('"createdAt" < :cursor', { cursor: new Date(parseInt(cursor)) })
+    }
+
+    const posts = await qb.getMany();
+
+    return { data: posts.slice(0, realLimit), hasMore: posts.length === realLimitForHasMore };
+
   }
 
   @Query(() => Post, { nullable: true })
