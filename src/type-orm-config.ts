@@ -1,3 +1,5 @@
+import path from 'path';
+
 import { __prod__ } from "./constants/common";
 import { Post } from "./entities/Post";
 import { User } from "./entities/User";
@@ -10,6 +12,7 @@ export default {
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   entities: [Post, User],
+  migrations: [path.join(__dirname, "./migrations/*")],
   synchronize: true,
   logging: !__prod__,
 }
