@@ -1,4 +1,4 @@
-import { Arg, Ctx, Field, InputType, Mutation, ObjectType, Query, Resolver } from "type-graphql";
+import { Arg, Ctx, Field, FieldResolver, InputType, Mutation, ObjectType, Query, Resolver, Root } from "type-graphql";
 import argon2 from 'argon2';
 
 import { ApolloContext } from "../types";
@@ -52,8 +52,20 @@ class UserResponse {
   user?: User;
 }
 
-@Resolver()
+@Resolver(User)
 export class UserResolver {
+  @FieldResolver(() => String) 
+  email(
+    @Root() root: User,
+    @Ctx() { req }: ApolloContext
+  ) {
+    if (req.session.userId === root.id) {
+      return root.email;
+    }
+
+    return '';
+  }
+
   @Query(() => UserResponse)
   async me(@Ctx() { req }: ApolloContext): Promise<UserResponse> {
     const { uid } = req.session;
@@ -112,7 +124,7 @@ export class UserResolver {
     const hashedPassword = await argon2.hash(password);
 
     const user = await User.create({ nick_name, password: hashedPassword, email }).save();
-    console.log(user, 'user')
+
     await sendEmail(email, 'Thanks for registration ))');
 
     req.session.uid = user.id
