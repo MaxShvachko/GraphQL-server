@@ -27,8 +27,12 @@ const init = async() => {
 
   app.use(cors({
     origin: ['https://studio.apollographql.com', 'http://localhost:3000'],
-    credentials: true
+    credentials: true,
   }));
+
+  app.set("trust proxy", !__prod__);
+  app.set("Access-Control-Allow-Origin", ["https://studio.apollographql.com", 'http://localhost:3000']);
+  app.set("Access-Control-Allow-Credentials", true);
 
   app.use(
     session({
@@ -41,7 +45,7 @@ const init = async() => {
         maxAge: COOKIE_MAX_AGE,
         httpOnly: true,
         secure: __prod__,
-        sameSite: 'lax',
+        sameSite: "lax"
       },
       saveUninitialized: false,
       secret: process.env.REDIS_SECRET as string,

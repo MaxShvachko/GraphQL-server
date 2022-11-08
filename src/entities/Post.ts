@@ -27,7 +27,7 @@ export class Post extends BaseEntity {
   creatorId!: string;
 
   @Field(() => Int, { nullable: true })
-  voteStatus!: string | null;
+  voteStatus!: number | null;
 
   @OneToMany(() => Updoot, (updoot) => updoot.post)
   updoots: Updoot[];
