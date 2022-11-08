@@ -1,5 +1,6 @@
-import { Post } from "../entities/Post";
 import { Arg, Mutation, Query, Resolver, InputType, Field, Ctx, UseMiddleware, Int, FieldResolver, Root, ObjectType } from "type-graphql";
+
+import { Post } from "../entities/Post";
 import { ApolloContext } from "../types";
 import { isAuth } from "../middleware/isAuth";
 import { Updoot } from "../entities/Updoot";
@@ -88,22 +89,24 @@ export class PostResolver {
     const realLimit = Math.min(50, limit);
     const realLimitForHasMore = realLimit + 1;
 
-    const qb = dataSource
-    .getRepository(Post)
-    .createQueryBuilder("p")
-    .innerJoinAndSelect(
-      "p.creator",
-      "u",
-      'u.id = p."creatorId"'
-    )
-    .addOrderBy('p.createdAt', 'DESC')
-    .take(realLimitForHasMore)
-
-    if (cursor) {
-      qb.where('p."createdAt" < :cursor', { cursor: new Date(parseInt(cursor)) })
-    }
-
-    const posts = await qb.getMany();
+    const posts = await dataSource.query(
+      `select p.*,
+        json_build_object(
+          'id', u.id,
+          'email', u.email,
+          'nick_name', u."nick_name"
+        ) creator,
+        ${uid
+          ? `(select value from updoot where "userId" = ${uid} and "postId" = p.id) "voteStatus"`
+          : 'null as "voteStatus"'
+        }
+        from post p
+        inner join public.user u on u.id = p."creatorId"
+        ${cursor ? `where p."createdAt" < ${cursor}` : ''}
+        order by p."createdAt" DESC
+        limit ${realLimitForHasMore}
+      `
+    );
 
     return { data: posts.slice(0, realLimit), hasMore: posts.length === realLimitForHasMore };
   }
