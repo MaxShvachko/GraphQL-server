@@ -21,7 +21,6 @@ class PaginatedPost {
 
   @Field()
   hasMore: boolean;
-  
 }
 
 @Resolver(Post)
@@ -89,6 +88,16 @@ export class PostResolver {
     const realLimit = Math.min(50, limit);
     const realLimitForHasMore = realLimit + 1;
 
+    const queryArguments: (Date | number)[] = [realLimitForHasMore];
+
+    if (uid) {
+      queryArguments.push(uid);
+    }
+
+    if (cursor) {
+      queryArguments.push(new Date(Number(cursor)));
+    }
+
     const posts = await dataSource.query(
       `select p.*,
         json_build_object(
@@ -97,23 +106,24 @@ export class PostResolver {
           'nick_name', u."nick_name"
         ) creator,
         ${uid
-          ? `(select value from updoot where "userId" = ${uid} and "postId" = p.id) "voteStatus"`
+          ? `(select value from updoot where "userId" = $2 and "postId" = p.id) "voteStatus"`
           : 'null as "voteStatus"'
         }
         from post p
         inner join public.user u on u.id = p."creatorId"
-        ${cursor ? `where p."createdAt" < ${cursor}` : ''}
+        ${cursor ? `where p."createdAt" < $${queryArguments.length}` : ''}
         order by p."createdAt" DESC
-        limit ${realLimitForHasMore}
-      `
+        limit $1
+      `,
+      queryArguments
     );
 
     return { data: posts.slice(0, realLimit), hasMore: posts.length === realLimitForHasMore };
   }
 
   @Query(() => Post, { nullable: true })
-  post(@Arg('id') id: number): Promise<Post | null> {
-    return Post.findOneBy({ id });
+  post(@Arg('id', () => Int) id: number): Promise<Post | null> {
+    return Post.findOne({ where: { id }, relations: ['creator'] });
   }
 
   @Mutation(() => Post)
@@ -146,9 +156,13 @@ export class PostResolver {
   }
 
   @Mutation(() => Boolean, { nullable: true })
-  async deletePost(@Arg('id') id: number): Promise<boolean> {
+  @UseMiddleware(isAuth)
+  async deletePost(
+    @Arg('id', () => Int) id: number,
+    @Ctx() { req }: ApolloContext
+  ): Promise<boolean> {
     try {
-      await Post.delete(id);
+      await Post.delete({ id, creatorId: req.session.uid });
       return true;
     } catch {
       return false; 
