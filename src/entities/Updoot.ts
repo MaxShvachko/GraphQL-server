@@ -14,13 +14,13 @@ export class Updoot extends BaseEntity {
   userId!: number;
 
   @Field(() => User)
-  @ManyToOne(() => User, (user) => user.updoots)
+  @ManyToOne(() => User, (user) => user.updoots, { onDelete:'CASCADE' })
   user: User
 
   @PrimaryColumn()
   postId!: number;
 
   @Field(() => User)
-  @ManyToOne(() => Post, (post) => post.updoots)
+  @ManyToOne(() => Post, (post) => post.updoots, { onDelete:'CASCADE' })
   post: Post
 }
