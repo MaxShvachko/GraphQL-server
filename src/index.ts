@@ -44,8 +44,8 @@ const init = async() => {
       cookie: {
         maxAge: COOKIE_MAX_AGE,
         httpOnly: true,
-        secure: __prod__,
-        sameSite: "lax"
+        secure: __prod__, // Set true for Sandbox ---- set false for front-end local usage
+        sameSite: "lax" // Set none for Sandbox ---- set lax for front-end local usage
       },
       saveUninitialized: false,
       secret: process.env.REDIS_SECRET as string,
