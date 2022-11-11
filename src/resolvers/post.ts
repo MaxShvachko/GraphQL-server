@@ -4,6 +4,7 @@ import { Post } from "../entities/Post";
 import { ApolloContext } from "../types";
 import { isAuth } from "../middleware/isAuth";
 import { Updoot } from "../entities/Updoot";
+import { User } from "../entities/User";
 
 @InputType()
 class PostParams {
@@ -31,7 +32,32 @@ export class PostResolver {
   ) {
     return root.text.slice(0, 70);
   }
-  
+
+  @FieldResolver(() => User)
+  creator(
+    @Root() root: Post,
+    @Ctx() { userLoader }: ApolloContext
+  ) {
+    return userLoader.load(root.creatorId);
+  }
+
+  @FieldResolver(() => Int, { nullable: true })
+  async voteStatus(
+    @Root() post: Post,
+    @Ctx() { updootLoader, req }: ApolloContext
+  ) {
+    if (!req.session.uid) {
+      return null;
+    }
+
+    const updoot = await updootLoader.load({
+      postId: post.id,
+      userId: req.session.uid,
+    });
+
+    return updoot ? updoot.value : null;
+  }
+
   @Mutation(() => Boolean)
   @UseMiddleware(isAuth)
   async vote(
@@ -82,35 +108,20 @@ export class PostResolver {
   async posts(
     @Arg('limit', () => Int) limit: number,
     @Arg('cursor', () => String, { nullable: true }) cursor: string | null,
-    @Ctx() { dataSource, req }: ApolloContext
+    @Ctx() { dataSource }: ApolloContext
   ): Promise<PaginatedPost | null> {
-    const { uid } = req.session;
     const realLimit = Math.min(50, limit);
     const realLimitForHasMore = realLimit + 1;
 
     const queryArguments: (Date | number)[] = [realLimitForHasMore];
-
-    if (uid) {
-      queryArguments.push(uid);
-    }
 
     if (cursor) {
       queryArguments.push(new Date(Number(cursor)));
     }
 
     const posts = await dataSource.query(
-      `select p.*,
-        json_build_object(
-          'id', u.id,
-          'email', u.email,
-          'nick_name', u."nick_name"
-        ) creator,
-        ${uid
-          ? `(select value from updoot where "userId" = $2 and "postId" = p.id) "voteStatus"`
-          : 'null as "voteStatus"'
-        }
+      `select p.*
         from post p
-        inner join public.user u on u.id = p."creatorId"
         ${cursor ? `where p."createdAt" < $${queryArguments.length}` : ''}
         order by p."createdAt" DESC
         limit $1
@@ -123,7 +134,7 @@ export class PostResolver {
 
   @Query(() => Post, { nullable: true })
   post(@Arg('id', () => Int) id: number): Promise<Post | null> {
-    return Post.findOne({ where: { id }, relations: ['creator'] });
+    return Post.findOne({ where: { id } });
   }
 
   @Mutation(() => Post)
