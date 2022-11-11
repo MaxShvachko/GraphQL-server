@@ -14,6 +14,8 @@ import typeOrmConfig from "./type-orm-config";
 import { PostResolver } from "./resolvers/post";
 import { UserResolver } from './resolvers/user';
 import { COOKIE_MAX_AGE, COOKIE_NAME } from './constants/cookies';
+import { createUserLoader } from './utils/createUserLoader';
+import { createUpdootLoader } from './utils/createUpdootLoader';
 
 const init = async() => {
   const AppDataSource = new DataSource(typeOrmConfig);
@@ -58,7 +60,14 @@ const init = async() => {
       resolvers: [PostResolver, UserResolver],
       validate: false
     }),
-    context: ({ req, res }) => ({ dataSource: AppDataSource, req, res, redis })
+    context: ({ req, res }) => ({ 
+      dataSource: AppDataSource, 
+      req, 
+      res,
+      redis,
+      userLoader: createUserLoader(),
+      updootLoader: createUpdootLoader()
+     })
   });
 
   await apolloServer.start();
